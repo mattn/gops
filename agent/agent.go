@@ -21,6 +21,14 @@ import (
 	"github.com/google/gops/signal"
 )
 
+type Agent struct {
+	portfile string
+}
+
+func NewAgent() *Agent {
+	return &Agent{}
+}
+
 // Start starts the gops agent on a host process. Once agent started,
 // users can use the advanced gops features.
 //
@@ -28,6 +36,21 @@ import (
 // any program on the system. Review your security requirements before
 // starting the agent.
 func Start() error {
+	a := NewAgent()
+
+	c := make(chan os.Signal, 1)
+	gosignal.Notify(c, os.Interrupt)
+	go func() {
+		// cleanup the socket on shutdown.
+		<-c
+		a.Stop()
+		os.Exit(1)
+	}()
+	return a.Start()
+}
+
+// Start the agent.
+func (agent *Agent) Start() error {
 	gopsdir, err := internal.ConfigDir()
 	if err != nil {
 		return err
@@ -47,15 +70,7 @@ func Start() error {
 	if err != nil {
 		return err
 	}
-
-	c := make(chan os.Signal, 1)
-	gosignal.Notify(c, os.Interrupt)
-	go func() {
-		// cleanup the socket on shutdown.
-		<-c
-		os.Remove(portfile)
-		os.Exit(1)
-	}()
+	agent.portfile = portfile
 
 	go func() {
 		buf := make([]byte, 1)
@@ -77,6 +92,12 @@ func Start() error {
 		}
 	}()
 	return err
+}
+
+// Stop the agent.
+func (agent *Agent) Stop() {
+	os.Remove(agent.portfile)
+	agent.portfile = ""
 }
 
 func handle(conn net.Conn, msg []byte) error {
